@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     # 日志配置
     LOG_LEVEL: str = "INFO"
     
+    # AI配置 - DeepSeek
+    AI_API_KEY: str = "sk-ba87253c34f74a7dbb790fb5776c531eb11"
+    AI_BASE_URL: str = "https://api.deepseek.com"
+    AI_MODEL: str = "deepseek-chat"
+    
+    # 缓存配置
+    CACHE_TTL: int = 3600  # 菜单缓存TTL（秒）
+    
+    # WebSocket配置
+    WS_HEARTBEAT_INTERVAL: int = 30
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
