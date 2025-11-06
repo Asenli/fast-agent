@@ -58,6 +58,7 @@ class PermissionService:
         
         # 从MenuService获取菜单（load_menus API已经返回了该用户有权限的菜单）
         from app.services.menu_service import MenuService
+
         return await MenuService.get_all_menus(user_id, department_id)
     
     @staticmethod
