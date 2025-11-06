@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能菜单导航测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .input-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .log-time {
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 智能菜单导航测试</h1>
+        
+        <div class="input-group">
+            <label for="userId">用户ID:</label>
+            <input type="number" id="userId" value="1" min="1">
+        </div>
+        
+        <div class="input-group">
+            <label for="commandText">输入文本指令:</label>
+            <input type="text" id="commandText" placeholder="例如：我希望操作菜谱，帮我打开菜谱" value="我希望操作菜谱，帮我打开菜谱">
+        </div>
+        
+        <div>
+            <button onclick="sendCommand()">发送指令</button>
+            <button onclick="connectWebSocket()">连接WebSocket</button>
+            <button onclick="disconnectWebSocket()">断开连接</button>
+            <button onclick="clearLog()">清空日志</button>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="log">
+            <h3>日志输出:</h3>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8001/api/v1';
+        let ws = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        async function sendCommand() {
+            const userId = parseInt(document.getElementById('userId').value);
+            const text = document.getElementById('commandText').value.trim();
+            
+            if (!text) {
+                showStatus('请输入文本指令', 'error');
+                return;
+            }
+
+            log(`发送指令: ${text}`, 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/voice/command`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        user_id: userId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ 成功: ${data.message}`, 'info');
+                    log(`匹配菜单: ${data.menu}`, 'info');
+                    showStatus(`成功: ${data.message}`, 'success');
+                } else {
+                    log(`❌ 失败: ${data.message}`, 'error');
+                    showStatus(`失败: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ 请求错误: ${error.message}`, 'error');
+                showStatus(`请求失败: ${error.message}`, 'error');
+            }
+        }
+
+        function connectWebSocket() {
+            const userId = parseInt(document.getElementById('userId').value);
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                showStatus('WebSocket已连接', 'info');
+                return;
+            }
+
+            log(`正在连接WebSocket (用户ID: ${userId})...`, 'info');
+            
+            ws = new WebSocket(`ws://localhost:8001/api/v1/ws/${userId}`);
+            
+            ws.onopen = () => {
+                log('✅ WebSocket连接成功', 'info');
+                showStatus('WebSocket连接成功', 'success');
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                log(`📨 收到消息: ${JSON.stringify(message, null, 2)}`, 'info');
+                
+                if (message.type === 'menu_navigation') {
+                    log(`🎯 执行菜单跳转: ${message.menu}`, 'info');
+                    showStatus(`收到导航消息: ${message.menu}`, 'success');
+                    
+                    // 这里应该执行实际的菜单跳转操作
+                    // 例如：window.location.href = `/menu/${message.menu}`;
+                    
+                    // 发送确认消息
+                    ws.send(JSON.stringify({
+                        type: 'ack',
+                        menu: message.menu,
+                        timestamp: new Date().toISOString()
+                    }));
+                } else if (message.type === 'connection') {
+                    log(`连接状态: ${message.message}`, 'info');
+                } else if (message.type === 'pong') {
+                    log('收到心跳响应', 'info');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                log(`❌ WebSocket错误: ${error}`, 'error');
+                showStatus('WebSocket连接错误', 'error');
+            };
+            
+            ws.onclose = () => {
+                log('WebSocket连接已关闭', 'info');
+                showStatus('WebSocket连接已关闭', 'info');
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('已断开WebSocket连接', 'info');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // 页面加载时自动连接WebSocket
+        window.onload = () => {
+            log('页面加载完成，可以开始测试', 'info');
+        };
+    </script>
+</body>
+</html>
+

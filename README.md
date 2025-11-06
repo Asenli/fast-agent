@@ -91,16 +91,16 @@ python main.py
 或使用 uvicorn：
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 ### 5. 访问 API 文档
 
 启动服务后，访问以下地址：
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- API 根路径: http://localhost:8000/
+- Swagger UI: http://localhost:8001/docs
+- ReDoc: http://localhost:8001/redoc
+- API 根路径: http://localhost:8001/
 
 ## 📚 目录说明
 
@@ -128,6 +128,11 @@ Pydantic 模式定义，用于：
 - 数据处理逻辑
 - 业务规则实现
 - 与数据库交互的封装
+  
+包含以下重点服务：
+- `ai_service.py`: 使用 DeepSeek 与本地中文向量模型进行菜单意图匹配，内置降级策略
+- `menu_service.py`: 调用外部菜单 API，构建第三级菜单名称到 ID 的映射与完整路径映射，带缓存与关键词自动生成
+- `permission_service.py`: 菜单权限过滤（占位实现，可对接实际权限中心）
 
 ### app/utils/
 工具函数模块，包含：
@@ -142,14 +147,26 @@ Pydantic 模式定义，用于：
 
 主要配置项在 `app/core/config.py` 中定义，可通过环境变量覆盖：
 
-- `PROJECT_NAME`: 项目名称
-- `HOST`: 服务器监听地址
-- `PORT`: 服务器端口
-- `DEBUG`: 调试模式
-- `CORS_ORIGINS`: CORS 允许的源
-- `DATABASE_URL`: 数据库连接 URL
-- `SECRET_KEY`: JWT 密钥
-- `LOG_LEVEL`: 日志级别
+- 基础
+  - `PROJECT_NAME`: 项目名称
+  - `HOST`: 服务器监听地址，默认 `0.0.0.0`
+  - `PORT`: 服务器端口，默认 `8001`
+  - `DEBUG`: 调试模式
+  - `CORS_ORIGINS`: CORS 允许的源
+  - `LOG_LEVEL`: 日志级别
+  
+- AI（DeepSeek）
+  - `AI_API_KEY`: API 密钥（务必在生产环境通过环境变量配置）
+  - `AI_BASE_URL`: 接口地址，默认 `https://api.deepseek.com`
+  - `AI_MODEL`: 模型名，默认 `deepseek-chat`
+  
+- 菜单 API
+  - `MENU_API_BASE_URL`: 菜单服务地址（如 `http://127.0.0.1:8090`）
+  - `MENU_API_COOKIE`: 调用菜单服务需要的 Cookie（可为空）
+  - `CACHE_TTL`: 菜单缓存 TTL（秒），默认 `3600`
+  
+- WebSocket
+  - `WS_HEARTBEAT_INTERVAL`: 心跳间隔秒数，默认 `30`
 
 ## 🧪 运行测试
 
@@ -179,6 +196,27 @@ pytest -v
 - `DELETE /api/v1/items/{item_id}`: 删除商品
 
 ### 用户 API
+- ### 语音 / 智能导航 API
+
+- `POST /api/v1/voice/command`: 输入文本指令，返回匹配菜单或候选列表；若唯一且有权限，将通过 WebSocket 推送打开指令
+- `GET /api/v1/voice/menus`: 用于调试，返回服务端缓存/拉取的菜单列表
+
+- ### WebSocket
+
+- `WS /api/v1/ws/{user_id}`: 建立连接后接收打开菜单等消息
+- `GET /api/v1/ws/status/{user_id}`: 查询用户的 WS 连接状态
+
+消息示例（唯一匹配时服务端推送）：
+
+```json
+{
+  "type": "open_action",
+  "menu": "一级-三级名称",
+  "user_id": 1,
+  "timestamp": "2025-01-01T12:00:00",
+  "data": { "type": "open_action", "actionId": 1548 }
+}
+```
 
 - `GET /api/v1/users/`: 获取用户列表
 - `GET /api/v1/users/{user_id}`: 获取单个用户
@@ -228,6 +266,14 @@ flake8 app/
 3. 在路由中添加依赖项进行权限验证
 
 ### 添加新的 API 端点
+### 引入本地中文向量模型（可选）
+
+项目已支持加载本地模型目录 `./bge-small-zh`（如不存在则回退在线 `BAAI/bge-small-zh`）：
+
+1. 将模型目录放置在项目根目录下：`bge-small-zh/`
+2. 安装 `sentence-transformers`
+3. 服务将自动用向量相似度进行候选排序，失败时降级到关键词匹配
+
 
 1. 在 `app/schemas/` 中定义请求/响应模式
 2. 在 `app/routers/` 中创建新的路由文件

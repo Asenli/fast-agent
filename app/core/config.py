@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     
     # AI配置 - DeepSeek
-    AI_API_KEY: str = "sk-ba87253c34f74a7dbb790fb5776c531eb11"
+    AI_API_KEY: str = "sk-ba87253c34f74a7dbb790fb5776c53eb11"
     AI_BASE_URL: str = "https://api.deepseek.com"
     AI_MODEL: str = "deepseek-chat"
     
@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     
     # WebSocket配置
     WS_HEARTBEAT_INTERVAL: int = 30
+    
+    # 菜单API配置
+    MENU_API_BASE_URL: str = "http://127.0.0.1:8090"
+    # MENU_API_BASE_URL: str = "https://jicai-dev.holderzone.cn"
+    MENU_API_COOKIE: str = ""  # 完整的 Cookie 字符串，如: frontend_lang=zh_CN; sl-session=...; session_id=...
     
     class Config:
         env_file = ".env"
