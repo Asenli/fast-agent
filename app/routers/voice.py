@@ -16,7 +16,7 @@ router = APIRouter()
 @router.post("/command", response_model=VoiceCommandResponse)
 async def process_voice_command(
     request: VoiceCommandRequest,
-    user_id: Optional[Union[int, str]] = None
+    user_id: Optional[Union[str]] = None
 ):
     """
     处理语音指令
@@ -32,10 +32,10 @@ async def process_voice_command(
     try:
         # 获取用户ID和部门ID（优先使用请求中的，否则使用参数或默认值）
         # 确保 user_id 始终是字符串类型
-        current_user_id = str(request.user_id or user_id or "1")
+        current_user = str(request.user_id or user_id or "1")
         current_department_id = request.department_id
         
-        if not current_user_id:
+        if not current_user:
             return VoiceCommandResponse(
                 success=False,
                 message="用户ID不能为空",
@@ -45,7 +45,7 @@ async def process_voice_command(
         
         # 1. 调用接口获取菜单列表（带缓存，自动构造映射和生成分词）
         session_id = request.session_id
-        menus = await MenuService.get_all_menus(current_user_id, current_department_id,session_id )
+        menus = await MenuService.get_all_menus(current_user, current_department_id, session_id)
         
         if not menus:
             return VoiceCommandResponse(
@@ -64,14 +64,14 @@ async def process_voice_command(
         if not matched_menus:
             return VoiceCommandResponse(
                 success=False,
-                message="小智还在学习中，未理解到您的意思",
+                message="小安还在学习中，未理解到您的意思",
                 menu=None,
                 menus=None
             )
         
         # 4. 过滤出用户有权限的菜单
         authorized_menus = await PermissionService.filter_menus_by_permission(
-            current_user_id, matched_menus, current_department_id
+            current_user, matched_menus, current_department_id
         )
         
         if not authorized_menus:
@@ -99,7 +99,7 @@ async def process_voice_command(
                 # "type": "menu_navigation",
                 "type": "open_action",
                 "menu": full_path,  # 使用完整路径
-                "user_id": current_user_id,
+                "user_id": current_user,
                 "timestamp": datetime.now().isoformat(),
                 "data": {
                     "type": "open_action",
@@ -109,7 +109,7 @@ async def process_voice_command(
             }
             
             # 发送WebSocket消息
-            message_sent = await manager.send_personal_message(message, current_user_id)
+            message_sent = await manager.send_personal_message(message, current_user)
             
             if not message_sent:
                 # WebSocket未连接，但API调用成功

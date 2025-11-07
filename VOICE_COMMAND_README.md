@@ -167,7 +167,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8001
    ```json
    {
      "success": false,
-     "message": "小智还在学习中...，未理解到您的意思",
+     "message": "小安还在学习中...，未理解到您的意思",
      "menu": null
    }
    ```

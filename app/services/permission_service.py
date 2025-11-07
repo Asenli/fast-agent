@@ -36,7 +36,7 @@ class PermissionService:
         return True
     
     @staticmethod
-    async def get_user_menus(user_id: int, department_id: Optional[int] = None) -> List[str]:
+    async def get_user_menus(user_id: str, department_id: Optional[int] = None) -> List[str]:
         """
         获取用户有权限的菜单列表
         
@@ -62,7 +62,7 @@ class PermissionService:
         return await MenuService.get_all_menus(user_id, department_id)
     
     @staticmethod
-    async def filter_menus_by_permission(user_id: int, menu_names: List[str], department_id: Optional[int] = None) -> List[str]:
+    async def filter_menus_by_permission(user_id: str, menu_names: List[str], department_id: Optional[int] = None) -> List[str]:
         """
         过滤菜单列表，只返回用户有权限的菜单
         

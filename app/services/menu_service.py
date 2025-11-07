@@ -62,7 +62,7 @@ class MenuService:
     _menu_to_full_path: Dict[str, str] = {}
     
     @classmethod
-    async def get_all_menus(cls, user_id: Optional[int] = None, department_id: Optional[int] = None, session_id: Optional[str] = None) -> List[str]:
+    async def get_all_menus(cls, user_id: Optional[str] = None, department_id: Optional[int] = None, session_id: Optional[str] = None) -> List[str]:
         """
         获取所有菜单列表（带缓存）。
         
@@ -183,10 +183,10 @@ class MenuService:
                 # 从更新后的映射中提取菜单名称列表
                 menu_names = list(cls._menu_to_action_id.keys())
                 
-                # 更新菜单分词缓存
+                # 更新菜单分词缓存（本地+外部增强）
                 if menu_names:
-                    cls._generate_menu_keywords(menu_names)
-                
+                    await cls.generate_and_enrich_keywords(menu_names)
+                print(f"菜单分词缓存：\n {cls._menu_keywords_cache}")
                 return menu_names if menu_names else []
                 
         except Exception as e:
@@ -220,6 +220,116 @@ class MenuService:
             if menu_name not in cls._menu_keywords_cache:
                 keywords = cls._extract_keywords(menu_name)
                 cls._menu_keywords_cache[menu_name] = keywords
+    
+    @classmethod
+    async def _fetch_external_menu_keywords(cls, menus: List[str]) -> Dict[str, List[str]]:
+        """
+        从外部接口批量获取菜单关键词，接口：
+        {MENU_API_BASE_URL}/api/v1/menu/cache_menus_keys
+
+        请求体：{"menus": ["菜单1", "菜单2", ...]}
+        期望响应：{"code":0, "msg":"ok", "data": [ {"菜单1": ["kw1","kw2"]}, {"菜单2": ["kw1"]} ]}
+        返回统一结构：{menu_name: [keywords...]}
+        """
+        if not menus:
+            return {}
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                url = f"{settings.MENU_API_BASE_URL}/api/v1/menu/cache_menus_keys"
+                payload = {"menus": menus}
+                headers = {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "User-Agent": "fast-agent/menus"
+                }
+                cookies = {}
+                if settings.MENU_API_COOKIE:
+                    for cookie_pair in settings.MENU_API_COOKIE.split(';'):
+                        if '=' in cookie_pair:
+                            key, value = cookie_pair.strip().split('=', 1)
+                            cookies[key] = value
+                resp = await client.post(url, json=payload, headers=headers, cookies=cookies)
+                resp.raise_for_status()
+                data = resp.json()
+                raw = []
+                if isinstance(data, dict) and data.get("result"):
+                    raw = data.get("result", data).get("dataList")
+                result: Dict[str, List[str]] = {}
+
+                # 目标格式：list[{menu_name: [kws]}]
+                if isinstance(raw, list):
+                    for item in raw:
+                        if not isinstance(item, dict):
+                            continue
+                        if len(item) == 1:
+                            k, v = next(iter(item.items()))
+                            if isinstance(k, str) and isinstance(v, list):
+                                kws = [str(x).strip() for x in v if isinstance(x, (str, int)) and str(x).strip()]
+                                if kws:
+                                    result[k] = kws
+                        else:
+                            # 兼容 {"menu":"名称","keywords":[...]} 结构
+                            m = item.get("menu")
+                            v = item.get("keywords")
+                            if isinstance(m, str) and isinstance(v, list):
+                                kws = [str(x).strip() for x in v if isinstance(x, (str, int)) and str(x).strip()]
+                                if kws:
+                                    result[m] = kws
+                elif isinstance(raw, dict):
+                    # 兼容 dict 直接返回 {menu: [kws]}
+                    for k, v in raw.items():
+                        if isinstance(k, str) and isinstance(v, list):
+                            kws = [str(x).strip() for x in v if isinstance(x, (str, int)) and str(x).strip()]
+                            if kws:
+                                result[k] = kws
+                return result
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"从外部接口获取菜单关键词失败: {str(e)}")
+            return {}
+
+    @classmethod
+    def _merge_external_keywords(cls, external_map: Dict[str, List[str]]) -> None:
+        """
+        将外部返回的 {菜单: [关键词...]} 合并到 cls._menu_keywords_cache，
+        同时若键为完整路径 "A-B"，也把关键词镜像合并到最后一级 B。
+        """
+        if not external_map:
+            return
+
+        def _merge_one(target_menu: str, kws: List[str]):
+            if not target_menu:
+                return
+            base = cls._menu_keywords_cache.get(target_menu, [])
+            merged_set: Set[str] = set(x.strip() for x in base if isinstance(x, str) and x.strip())
+            for kw in kws:
+                if isinstance(kw, (str, int)):
+                    s = str(kw).strip()
+                    if s:
+                        merged_set.add(s)
+            cls._menu_keywords_cache[target_menu] = list(merged_set)
+
+        for menu_name, kws in external_map.items():
+            if not isinstance(menu_name, str) or not isinstance(kws, list):
+                continue
+            name = menu_name.strip()
+            if not name:
+                continue
+            _merge_one(name, kws)
+            if "-" in name:
+                last = name.split("-")[-1].strip()
+                if last:
+                    _merge_one(last, kws)
+
+    @classmethod
+    async def generate_and_enrich_keywords(cls, menus: List[str]) -> None:
+        """
+        先基于本地算法生成关键词，再调用外部接口进行合并增强。
+        """
+        cls._generate_menu_keywords(menus)
+        external_map = await cls._fetch_external_menu_keywords(menus)
+        cls._merge_external_keywords(external_map)
     
     @classmethod
     def _extract_keywords(cls, menu_name: str) -> List[str]:
