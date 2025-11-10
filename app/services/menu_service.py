@@ -14,8 +14,6 @@ class MenuService:
     
     _cache: dict = {}  # 格式: {f"{user_id}_{department_id}": {"menus": [...], "time": datetime}}
     _cache_time: datetime = None
-    # 菜单分词缓存 {菜单名: [分词列表]}
-    _menu_keywords_cache: Dict[str, List[str]] = {}
     # 第三级菜单名称 -> menu_id 的映射
     _menu_to_action_id: Dict[str, int] = {
         # # 根据截图临时映射，后续可补充/修正
@@ -112,7 +110,7 @@ class MenuService:
         - 解析三级结构，保存：
           1) `_menu_to_action_id[第三级中文名] = menu_id`
           2) `_menu_to_full_path[第三级中文名] = "第一级-第三级"`
-        - 同步生成 `_menu_keywords_cache` 以支持意图匹配
+        - 可配合 `build_menu_keywords` 实时生成菜单关键词以支持意图匹配
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -184,9 +182,6 @@ class MenuService:
                 menu_names = list(cls._menu_to_action_id.keys())
                 
                 # 更新菜单分词缓存（本地+外部增强）
-                if menu_names:
-                    await cls.generate_and_enrich_keywords(menu_names)
-                print(f"菜单分词缓存：\n {cls._menu_keywords_cache}")
                 return menu_names if menu_names else []
                 
         except Exception as e:
@@ -206,20 +201,6 @@ class MenuService:
         """清除缓存"""
         cls._cache = {}
         cls._cache_time = None
-    
-    @classmethod
-    def _generate_menu_keywords(cls, menus: List[str]):
-        """
-        动态生成菜单分词，用于意图匹配
-        自动从菜单名称中提取关键词，便于匹配
-        
-        Args:
-            menus: 菜单名称列表
-        """
-        for menu_name in menus:
-            if menu_name not in cls._menu_keywords_cache:
-                keywords = cls._extract_keywords(menu_name)
-                cls._menu_keywords_cache[menu_name] = keywords
     
     @classmethod
     async def _fetch_external_menu_keywords(cls, menus: List[str]) -> Dict[str, List[str]]:
@@ -290,47 +271,66 @@ class MenuService:
             return {}
 
     @classmethod
-    def _merge_external_keywords(cls, external_map: Dict[str, List[str]]) -> None:
+    async def build_menu_keywords(cls, menus: List[str]) -> Dict[str, List[str]]:
         """
-        将外部返回的 {菜单: [关键词...]} 合并到 cls._menu_keywords_cache，
-        同时若键为完整路径 "A-B"，也把关键词镜像合并到最后一级 B。
-        """
-        if not external_map:
-            return
+        结合本地关键词生成逻辑与实时接口数据，构建菜单关键词映射。
 
-        def _merge_one(target_menu: str, kws: List[str]):
-            if not target_menu:
+        注意：不会在类属性中缓存外部接口返回的数据，每次调用都会重新请求。
+        """
+        if not menus:
+            return {}
+
+        keyword_map: Dict[str, List[str]] = {}
+
+        def _deduplicate(items: List[str]) -> List[str]:
+            seen: Set[str] = set()
+            deduped: List[str] = []
+            for item in items:
+                value = str(item).strip()
+                if not value or value in seen:
+                    continue
+                seen.add(value)
+                deduped.append(value)
+            return deduped
+
+        # 本地生成基础关键词
+        for menu_name in menus:
+            local_keywords = cls._extract_keywords(menu_name)
+            keyword_map[menu_name] = _deduplicate(local_keywords if isinstance(local_keywords, list) else [menu_name]) or [menu_name]
+
+        # 合并外部接口返回的关键词
+        external_map = await cls._fetch_external_menu_keywords(menus)
+
+        def _merge_into(target: str, kws: List[str]):
+            if not target:
                 return
-            base = cls._menu_keywords_cache.get(target_menu, [])
-            merged_set: Set[str] = set(x.strip() for x in base if isinstance(x, str) and x.strip())
+            base = keyword_map.setdefault(target, [])
+            existing = set(base)
             for kw in kws:
                 if isinstance(kw, (str, int)):
-                    s = str(kw).strip()
-                    if s:
-                        merged_set.add(s)
-            cls._menu_keywords_cache[target_menu] = list(merged_set)
+                    value = str(kw).strip()
+                    if value and value not in existing:
+                        base.append(value)
+                        existing.add(value)
 
-        for menu_name, kws in external_map.items():
-            if not isinstance(menu_name, str) or not isinstance(kws, list):
-                continue
-            name = menu_name.strip()
-            if not name:
-                continue
-            _merge_one(name, kws)
-            if "-" in name:
-                last = name.split("-")[-1].strip()
-                if last:
-                    _merge_one(last, kws)
+        if external_map:
+            for menu_name, kws in external_map.items():
+                if not isinstance(menu_name, str) or not isinstance(kws, list):
+                    continue
+                normalized_name = menu_name.strip()
+                if not normalized_name:
+                    continue
+                cleaned_keywords = [str(x).strip() for x in kws if isinstance(x, (str, int)) and str(x).strip()]
+                if not cleaned_keywords:
+                    continue
+                _merge_into(normalized_name, cleaned_keywords)
+                if "-" in normalized_name:
+                    last = normalized_name.split("-")[-1].strip()
+                    if last:
+                        _merge_into(last, cleaned_keywords)
 
-    @classmethod
-    async def generate_and_enrich_keywords(cls, menus: List[str]) -> None:
-        """
-        先基于本地算法生成关键词，再调用外部接口进行合并增强。
-        """
-        cls._generate_menu_keywords(menus)
-        external_map = await cls._fetch_external_menu_keywords(menus)
-        cls._merge_external_keywords(external_map)
-    
+        return keyword_map
+
     @classmethod
     def _extract_keywords(cls, menu_name: str) -> List[str]:
         """
@@ -404,32 +404,6 @@ class MenuService:
         
         return list(set(keywords))  # 去重
     
-    @classmethod
-    def get_menu_keywords(cls, menu_name: str) -> List[str]:
-        """
-        获取菜单的关键词列表
-        
-        Args:
-            menu_name: 菜单名称
-            
-        Returns:
-            关键词列表
-        """
-        if menu_name not in cls._menu_keywords_cache:
-            # 如果缓存中没有，生成并缓存
-            cls._generate_menu_keywords([menu_name])
-        return cls._menu_keywords_cache.get(menu_name, [menu_name])
-    
-    @classmethod
-    def get_all_menu_keywords(cls) -> Dict[str, List[str]]:
-        """
-        获取所有菜单的关键词映射
-        
-        Returns:
-            菜单名称 -> 关键词列表的映射
-        """
-        return cls._menu_keywords_cache.copy()
-
     @classmethod
     def get_action_id_by_menu(cls, menu_name: str) -> int:
         """

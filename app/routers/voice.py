@@ -55,8 +55,8 @@ async def process_voice_command(
                 menus=None
             )
         
-        # 2. 获取菜单关键词映射（用于意图识别）
-        menu_keywords = MenuService.get_all_menu_keywords()
+        # 2. 获取菜单关键词映射（用于意图识别，实时获取不缓存）
+        menu_keywords = await MenuService.build_menu_keywords(menus)
         
         # 3. 调用AI分析匹配菜单（返回多个匹配结果）
         matched_menus = await AIService.match_menus(request.text, menus, menu_keywords, ai_mode=request.ai_mode)

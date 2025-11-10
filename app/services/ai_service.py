@@ -41,26 +41,33 @@ class AIService:
             匹配的菜单列表（按相关性排序）
         """
         try:
+            mode = ai_mode.lower() if ai_mode else None
+            keywords = menu_keywords
+
+            if mode != 'deepseek' and keywords is None:
+                keywords = await MenuService.build_menu_keywords(menus)
+
             # 通过请求参数控制匹配策略：
             # - ai_mode == 'deepseek'：调用 DeepSeek（返回单个，包装为列表），失败则兜底 simple
             # - 其他/默认：使用向量相似度匹配，失败兜底 simple
-            if ai_mode and ai_mode.lower() == 'deepseek':
+            if mode == 'deepseek':
                 deepseek_matched = await AIService._call_deepseek(user_input, menus)
                 if deepseek_matched:
                     return [deepseek_matched]
                 print(f"deepseek AI匹配失败")
                 return []
                 # return AIService._simple_match_multiple(user_input, menus)
-            elif ai_mode and ai_mode.lower() == 'bge-small-zh':
-                matched = AIService._embedding_match_multiple(user_input, menus, menu_keywords)
+            elif mode == 'bge-small-zh':
+                matched = AIService._embedding_match_multiple(user_input, menus, keywords)
                 return matched if matched else []
             else:
-                matched = AIService._simple_match_multiple(user_input, menus)
+                matched = AIService._simple_match_multiple(user_input, menus, keywords)
                 return matched if matched else []
         except Exception as e:
             print(f"AI匹配失败: {e}")
             # 降级方案：使用简单的关键词匹配
-            return AIService._simple_match_multiple(user_input, menus)
+            fallback_keywords = menu_keywords or await MenuService.build_menu_keywords(menus)
+            return AIService._simple_match_multiple(user_input, menus, fallback_keywords)
     
     @staticmethod
     async def match_menu(user_input: str, menus: List[str]) -> Optional[str]:
@@ -74,7 +81,7 @@ class AIService:
         Returns:
             匹配的菜单名称（单个）
         """
-        menu_keywords = MenuService.get_all_menu_keywords()
+        menu_keywords = await MenuService.build_menu_keywords(menus)
         matched_menus = await AIService.match_menus(user_input, menus, menu_keywords)
         return matched_menus[0] if matched_menus else None
     
@@ -391,13 +398,14 @@ class AIService:
             return []
     
     @staticmethod
-    def _simple_match_multiple(user_input: str, menus: List[str]) -> List[str]:
+    def _simple_match_multiple(user_input: str, menus: List[str], menu_keywords: Optional[dict] = None) -> List[str]:
         """
         简单关键词匹配（降级方案），返回多个匹配结果（带评分排序）
         
         Args:
             user_input: 用户输入
             menus: 菜单列表
+            menu_keywords: 菜单关键词映射（实时生成，不做缓存）
             
         Returns:
             匹配的菜单列表（按相关性排序，只返回高分匹配）
@@ -405,11 +413,11 @@ class AIService:
         scores = {}  # {菜单名: 匹配分数}
         
         # 使用动态生成的关键词
-        menu_keywords = MenuService.get_all_menu_keywords()
+        keywords_map = menu_keywords or {}
         
         # 检查每个菜单
         for menu in menus:
-            keywords = menu_keywords.get(menu, [menu])
+            keywords = keywords_map.get(menu, [menu])
             score = 0
             exact_match = False  # 标记是否有精确匹配
             
