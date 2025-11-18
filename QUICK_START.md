@@ -22,7 +22,7 @@ poetry install
 # 基础
 HOST=0.0.0.0
 PORT=8001
-DEBUG=true
+DEBUG=False
 
 # AI（DeepSeek）
 AI_API_KEY=替换为你的Key

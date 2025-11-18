@@ -2,6 +2,7 @@
 应用配置模块
 """
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List
 
 
@@ -16,10 +17,23 @@ class Settings(BaseSettings):
     # 服务器配置
     HOST: str = "0.0.0.0"
     PORT: int = 8001
-    DEBUG: bool = True
+    DEBUG: bool = False
     
     # CORS 配置
     CORS_ORIGINS: List[str] = ["*"]
+    
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """解析 CORS_ORIGINS，支持字符串和列表格式"""
+        if isinstance(v, str):
+            # 如果是字符串，按逗号分割，去除空格
+            if v.strip() == "*":
+                return ["*"]
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        if isinstance(v, list):
+            return v
+        return ["*"]
     
     # 数据库配置（示例）
     DATABASE_URL: str = "sqlite:///./app.db"

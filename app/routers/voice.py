@@ -140,12 +140,18 @@ async def process_voice_command(
                 # 获取 action_id
                 action_id = MenuService.get_action_id_by_menu(menu_name)
                 
+                # 从完整路径中提取父级菜单名称（第一级菜单）
+                parent_menu_name = None
+                if full_path and "-" in full_path:
+                    parent_menu_name = full_path.split("-")[0]
+                
                 # 构造菜单对象
                 menu_obj = {
                     "type": "open_action",
                     "actionId": str(action_id) if action_id else None,
                     "timestamp": datetime.now().isoformat(),
-                    "name": menu_name
+                    "name": menu_name,
+                    "parentName": parent_menu_name
                 }
                 menus_obj.append(menu_obj)
             

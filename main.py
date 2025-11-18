@@ -5,6 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers.api import api_router
+from app.utils.logging import setup_logging
+
+# 初始化日志
+setup_logging()
 
 # 创建 FastAPI 应用实例
 app = FastAPI(

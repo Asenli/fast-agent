@@ -16,6 +16,9 @@ except Exception:  # 运行环境未安装也不阻塞，其它兜底逻辑会�
     util = None  # type: ignore
 
 
+logger = logging.getLogger(__name__)
+
+
 class AIService:
     """
     AI服务 - 菜单意图匹配引擎。
@@ -137,6 +140,14 @@ class AIService:
         try:
             prompt = f"你是一个智能系统，只需根据用户输入去理解想打开哪个菜单，从以下列表中返回一个或者多个最相关项： {menus}。 输入：{user_input} 请直接输出 Python 列表格式，不要解释和多余的，也不要编造。"
             async with httpx.AsyncClient(timeout=30.0) as client:
+                logger.info(
+                    "调用DeepSeek接口 url=%s model=%s temperature=%s max_tokens=%s menus=%s",
+                    f"{settings.AI_BASE_URL}/v1/chat/completions",
+                    settings.AI_MODEL,
+                    0.3,
+                    100,
+                    len(menus),
+                )
                 response = await client.post(
                     f"{settings.AI_BASE_URL}/v1/chat/completions",
                     headers={

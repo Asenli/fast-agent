@@ -3,10 +3,14 @@
 """
 from typing import List, Dict, Any, Optional, Set
 import json
+import logging
 import re
 from datetime import datetime
 import httpx
 from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class MenuService:
@@ -148,6 +152,14 @@ class MenuService:
                             key, value = cookie_pair.strip().split('=', 1)
                             cookies[key] = value
                 
+                logger.info(
+                    "调用菜单API url=%s payload=%s headers=%s cookies_keys=%s",
+                    url,
+                    payload,
+                    {k: headers.get(k) for k in ("Content-Type", "User-Agent", "Origin")},
+                    list(cookies.keys()),
+                )
+
                 # 发送POST请求
                 response = await client.post(
                     url,
@@ -186,8 +198,6 @@ class MenuService:
                 
         except Exception as e:
             # 如果API调用失败，记录错误并返回默认菜单列表
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"从API获取菜单失败: {str(e)}")
             # 返回默认菜单列表（保留原有硬编码的映射）
             menu_names = list(cls._menu_to_action_id.keys()) if cls._menu_to_action_id else []
@@ -229,6 +239,14 @@ class MenuService:
                         if '=' in cookie_pair:
                             key, value = cookie_pair.strip().split('=', 1)
                             cookies[key] = value
+                logger.info(
+                    "调用菜单关键词API url=%s payload_sample=%s headers=%s cookies_keys=%s",
+                    url,
+                    {"menus_count": len(menus)},
+                    headers,
+                    list(cookies.keys()),
+                )
+
                 resp = await client.post(url, json=payload, headers=headers, cookies=cookies)
                 resp.raise_for_status()
                 data = resp.json()
@@ -265,8 +283,6 @@ class MenuService:
                                 result[k] = kws
                 return result
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"从外部接口获取菜单关键词失败: {str(e)}")
             return {}
 
