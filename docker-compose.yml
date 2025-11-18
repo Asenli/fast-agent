@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  fast-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fast-agent
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      # 服务器配置
+      - HOST=0.0.0.0
+      - PORT=8001
+      - DEBUG=False
+      # CORS 配置
+      - CORS_ORIGINS=["*"]
+      # 日志配置
+      - LOG_LEVEL=INFO
+      # AI 配置（请替换为实际值）
+      - AI_API_KEY=${AI_API_KEY:-your-api-key-here}
+      - AI_BASE_URL=${AI_BASE_URL:-https://api.deepseek.com}
+      - AI_MODEL=${AI_MODEL:-deepseek-chat}
+      # 菜单 API 配置
+      - MENU_API_BASE_URL=${MENU_API_BASE_URL:-http://127.0.0.1:8090}
+      - MENU_API_COOKIE=${MENU_API_COOKIE:-}
+      - CACHE_TTL=${CACHE_TTL:-3600}
+      # WebSocket 配置
+      - WS_HEARTBEAT_INTERVAL=${WS_HEARTBEAT_INTERVAL:-30}
+      # 向量模型配置（可选）
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-bge-small-zh}
+      - EMBEDDING_MODEL_LOCAL_PATH=${EMBEDDING_MODEL_LOCAL_PATH:-}
+    volumes:
+      # 如果需要持久化数据，可以挂载数据目录
+      # - ./data:/app/data
+      # 如果需要使用本地模型文件，取消下面的注释并指定 EMBEDDING_MODEL_LOCAL_PATH
+      # - ./models/all-MiniLM-L6-v2:/app/models/all-MiniLM-L6-v2:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - fast-agent-network
+
+networks:
+  fast-agent-network:
+    driver: bridge
+
