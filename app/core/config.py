@@ -2,7 +2,7 @@
 应用配置模块
 """
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, Field
 from typing import List
 
 
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     WS_HEARTBEAT_INTERVAL: int = 30
     
     # 菜单API配置
-    MENU_API_BASE_URL: str = "http://127.0.0.1:8090"
+    MENU_API_BASE_URL: str = Field(default="http://127.0.0.1:8090", env="MENU_API_BASE_URL")
     # MENU_API_BASE_URL: str = "https://jicai-dev.holderzone.cn"
     MENU_API_COOKIE: str = ""  # 完整的 Cookie 字符串，如: frontend_lang=zh_CN; sl-session=...; session_id=...
     

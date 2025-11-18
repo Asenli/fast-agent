@@ -262,6 +262,20 @@ docker images | grep fast-agent
 docker rmi fast-agent_fast-agent
 # 或
 docker rmi $(docker images fast-agent* -q)
+
+
+# 启动设置环境变量方式
+docker run -d \
+  -e SECRET_KEY=prod-secret \
+  -e AI_API_KEY=sk-xxx \
+  -e AI_BASE_URL=https://api.deepseek.com \
+  -e AI_MODEL=deepseek-chat \
+  -e CACHE_TTL=7200 \
+  -e WS_HEARTBEAT_INTERVAL=30 \
+  -e MENU_API_BASE_URL=https://jicai-dev.holderzone.cn \
+  -e MENU_API_COOKIE="frontend_lang=zh_CN;..." \
+  fast-agent-image
+
 ```
 
 ### 方式二：直接部署（不使用 Docker）

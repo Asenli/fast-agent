@@ -1,8 +1,11 @@
 """
 FastAPI 应用入口文件
 """
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import settings
 from app.routers.api import api_router
 from app.utils.logging import setup_logging
@@ -46,6 +49,17 @@ async def root():
 async def health_check():
     """健康检查端点"""
     return {"status": "healthy"}
+
+
+@app.get("/test")
+async def deployment_test():
+    """部署后快速验证接口"""
+    return {
+        "status": "ok",
+        "message": "服务运行正常",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "version": settings.VERSION,
+    }
 
 
 if __name__ == "__main__":
