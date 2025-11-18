@@ -4,16 +4,21 @@ AI服务模块 - 使用DeepSeek API
 import json
 import ast
 import logging
+import os
 import re
 import httpx
 from typing import List, Optional
+
 from app.core.config import settings
 from app.services.menu_service import MenuService
+
 try:
-    from sentence_transformers import SentenceTransformer, util  # type: ignore
+    import torch
+    from transformers import AutoModel, AutoTokenizer  # type: ignore
 except Exception:  # 运行环境未安装也不阻塞，其它兜底逻辑会生效
-    SentenceTransformer = None  # type: ignore
-    util = None  # type: ignore
+    torch = None  # type: ignore
+    AutoModel = None  # type: ignore
+    AutoTokenizer = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +33,10 @@ class AIService:
     2) 失败或缺依赖则降级为关键词匹配（基于 `MenuService` 动态生成的关键词）
     3) 可选：DeepSeek API 带来的匹配（当前作为示例/备用路径）
     """
-    _embedding_model = None  # SentenceTransformer 实例（延迟加载）
+    _embedding_model = None  # 本地 Transformer 模型实例（延迟加载）
+    _embedding_tokenizer = None  # 分词器实例
+    _embedding_device = "cpu"
+    _query_instruction = "为这个句子生成表示以用于检索相关文章："
     
     @staticmethod
     async def match_menus(user_input: str, menus: List[str], menu_keywords: Optional[dict] = None, ai_mode: Optional[str] = None) -> List[str]:
@@ -275,27 +283,21 @@ class AIService:
                 return []
 
             # 若运行环境没有安装依赖，则跳过此方案
-            if SentenceTransformer is None:
+            if torch is None or AutoTokenizer is None or AutoModel is None:
                 return []
 
-            # 延迟加载模型（进程级缓存）
-            if AIService._embedding_model is None:
-                # 优先从项目根目录下的本地模型目录加载：./bge-small-zh
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                local_model_dir = os.path.join(project_root, "bge-small-zh")
-                if os.path.isdir(local_model_dir):
-                    AIService._embedding_model = SentenceTransformer(local_model_dir)
-                else:
-                    logging.error("未找到本地模型目录 bge-small-zh，无法加载向量模型")
-                    raise Exception("未找到本地模型目录，请检查项目根目录是否存在 bge-small-zh 目录")
+            if not AIService._ensure_embedding_runtime():
+                return []
 
-            model = AIService._embedding_model
+            menu_vecs = AIService._encode_texts(menus)
+            if menu_vecs is None:
+                return []
+            query_vec = AIService._encode_texts([user_input], is_query=True)
+            if query_vec is None:
+                return []
+            query_vec = query_vec[0]
 
-            # 计算向量（规范化后使用余弦相似度）
-            menu_vecs = model.encode(menus, normalize_embeddings=True)
-            query_vec = model.encode([user_input], normalize_embeddings=True)[0]
-
-            scores_tensor = util.cos_sim(query_vec, menu_vecs)[0]
+            scores_tensor = torch.matmul(menu_vecs, query_vec)
             scores = scores_tensor.tolist()
 
             # 根据分数排序
@@ -407,6 +409,81 @@ class AIService:
         except Exception:
             # 任意异常时回退，让上层继续走关键词方案
             return []
+
+    @staticmethod
+    def _ensure_embedding_runtime() -> bool:
+        """
+        确保本地 bge-small-zh 模型与分词器已加载。
+        """
+        if AIService._embedding_model is not None and AIService._embedding_tokenizer is not None:
+            return True
+
+        if torch is None or AutoTokenizer is None or AutoModel is None:
+            logging.error("缺少 transformers/torch 依赖，无法使用本地向量模型")
+            return False
+
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        local_model_dir = os.path.join(project_root, "bge-small-zh")
+        if not os.path.isdir(local_model_dir):
+            logging.error("未找到本地模型目录 bge-small-zh，无法加载向量模型")
+            raise Exception("未找到本地模型目录，请检查项目根目录是否存在 bge-small-zh 目录")
+
+        tokenizer = AutoTokenizer.from_pretrained(local_model_dir)
+        model = AutoModel.from_pretrained(local_model_dir)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = model.to(device)
+        model.eval()
+
+        AIService._embedding_tokenizer = tokenizer
+        AIService._embedding_model = model
+        AIService._embedding_device = device
+        logger.info("已加载本地向量模型 bge-small-zh（device=%s）", device)
+        return True
+
+    @staticmethod
+    def _encode_texts(texts: List[str], is_query: bool = False, batch_size: int = 32):
+        """
+        编码文本并返回 L2 归一化后的向量。
+        """
+        if not texts:
+            return None
+        if AIService._embedding_model is None or AIService._embedding_tokenizer is None or torch is None:
+            return None
+
+        tokenizer = AIService._embedding_tokenizer
+        model = AIService._embedding_model
+        device = AIService._embedding_device
+
+        processed_texts = texts
+        if is_query:
+            instruction = AIService._query_instruction
+            processed_texts = [f"{instruction}{text}" for text in texts]
+
+        embeddings = []
+        for start in range(0, len(processed_texts), batch_size):
+            batch = processed_texts[start:start + batch_size]
+            inputs = tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt"
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            with torch.no_grad():
+                outputs = model(**inputs)
+                last_hidden_state = outputs.last_hidden_state
+                attention_mask = inputs["attention_mask"].unsqueeze(-1)
+                masked = last_hidden_state * attention_mask
+                sum_embeddings = masked.sum(dim=1)
+                lengths = attention_mask.sum(dim=1).clamp(min=1e-9)
+                sentence_embeddings = sum_embeddings / lengths
+                sentence_embeddings = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1)
+            embeddings.append(sentence_embeddings.cpu())
+
+        if not embeddings:
+            return None
+        return torch.cat(embeddings, dim=0)
     
     @staticmethod
     def _simple_match_multiple(user_input: str, menus: List[str], menu_keywords: Optional[dict] = None) -> List[str]:

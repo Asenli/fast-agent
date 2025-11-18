@@ -18,6 +18,10 @@ pydantic-settings==2.1.0
 python-dotenv==1.0.0
 httpx==0.25.1
 
+# 向量模型
+torch==2.2.1
+transformers==4.40.1
+
 # 开发依赖
 pytest==7.4.3
 pytest-asyncio==0.21.1

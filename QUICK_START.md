@@ -127,7 +127,7 @@ ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
 ### 启用本地中文向量模型（可选）
 
 1. 将 `bge-small-zh/` 模型目录放到项目根目录
-2. 安装 `sentence-transformers`
+2. 运行 `pip install -r requirements.txt`（包含 torch/transformers）
 3. 无网络或接口不可用时，仍可完成多候选匹配
 
 ## 注意事项

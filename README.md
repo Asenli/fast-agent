@@ -306,8 +306,7 @@ source venv/bin/activate
 pip install --upgrade pip
 
 # 安装依赖
-pip install -r requirements.txt
-pip install sentence-transformers>=2.6.1
+pip install -r requirements.txt  # 已包含本地向量模型所需的 torch/transformers
 ```
 
 #### 4. 配置环境变量
@@ -793,7 +792,7 @@ flake8 app/
 项目已支持加载本地模型目录 `./bge-small-zh`（如不存在则回退在线 `BAAI/bge-small-zh`）：
 
 1. 将模型目录放置在项目根目录下：`bge-small-zh/`
-2. 安装 `sentence-transformers`
+2. 运行 `pip install -r requirements.txt`（已包含 torch/transformers）
 3. 服务将自动用向量相似度进行候选排序，失败时降级到关键词匹配
 
 
