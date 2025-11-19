@@ -9,27 +9,59 @@ description = "一个基于 FastAPI 的现代化 Web 服务"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "pydantic>=2.5.0",
-    "pydantic-settings>=2.1.0",
-    "python-dotenv>=1.0.0",
-    "httpx>=0.25.0",
-    "email-validator>=2.0.0",
-    "sentence_transformers>=2.6.1",
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "python-dotenv==1.0.0",
+    "httpx==0.25.1",
+    "email-validator==2.1.0",
+    # torch 使用 CPU 版本，确保 Windows 和 Docker 环境一致
+    # 注意：pip 安装需要使用 --index-url
+    # pip install --index-url https://download.pytorch.org/whl/cpu torch==2.2.1+cpu
+    # 或者使用 Poetry：poetry add torch==2.2.1+cpu --source pytorch-cpu
+    # "torch==2.2.1+cpu",  # 不能直接在 requirements.txt 中指定，需要单独安装
+    "transformers==4.40.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.11.0",
-    "flake8>=6.1.0",
-    "mypy>=1.7.0",
+    "pytest==7.4.3",
+    "pytest-asyncio==0.21.1",
+    "black==23.11.0",
+    "flake8==6.1.0",
+    "mypy==1.7.0",
 ]
 
 [tool.poetry]
+name = "fast-agent"
+version = "1.0.0"
+description = "一个基于 FastAPI 的现代化 Web 服务"
+readme = "README.md"
 package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "0.104.1"
+uvicorn = {extras = ["standard"], version = "0.24.0"}
+pydantic = "2.5.0"
+pydantic-settings = "2.1.0"
+python-dotenv = "1.0.0"
+httpx = "0.25.1"
+email-validator = "2.1.0"
+# torch 使用 CPU 版本，确保 Windows 和 Docker 环境一致
+# 注意：Poetry 需要先添加 PyTorch 源，然后安装
+# 安装命令：poetry source add pytorch-cpu https://download.pytorch.org/whl/cpu --priority=supplemental
+# 然后：poetry add torch==2.2.1+cpu --source pytorch-cpu
+torch = {version = "2.2.1+cpu", source = "pytorch-cpu"}
+transformers = "4.40.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "7.4.3"
+pytest-asyncio = "0.21.1"
+black = "23.11.0"
+flake8 = "6.1.0"
+mypy = "1.7.0"
 
 [tool.black]
 line-length = 100
@@ -54,4 +86,9 @@ asyncio_mode = "auto"
 name = "tsinghua"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 priority = "primary"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "supplemental"
 

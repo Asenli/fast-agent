@@ -3,6 +3,22 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
+email-validator==2.1.0
+
+# 工具库
+python-dotenv==1.0.0
+httpx==0.25.1
+
+# 向量模型依赖
+# 注意：torch 需要从 PyTorch CPU 源安装
+# 本地安装：pip install --index-url https://download.pytorch.org/whl/cpu torch==2.2.1+cpu
+# Docker 环境已在 Dockerfile 中自动安装，这里不包含以避免 pip 安装冲突
+# numpy 是 torch 的必需依赖，Dockerfile 中已安装固定版本 1.24.3
+# 本地开发环境可以使用：numpy==1.24.3
+numpy==1.24.3
+transformers==4.40.1
+sentencepiece>=0.1.99
+protobuf>=3.20.0
 
 # 数据库相关（可选）
 # sqlalchemy==2.0.23
@@ -14,21 +30,9 @@ pydantic-settings==2.1.0
 # passlib[bcrypt]==1.7.4
 # python-multipart==0.0.6
 
-# 工具库
-python-dotenv==1.0.0
-httpx==0.25.1
-
-# 向量模型
-torch==2.2.1
-transformers==4.40.1
-
-# 开发依赖
-pytest==7.4.3
-pytest-asyncio==0.21.1
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.0
-
-python-dotenv==1.0.0
-httpx==0.25.1
-email-validator==2.1.0  # Pydantic EmailStr 需要
+# 开发依赖（可选）
+# pytest==7.4.3
+# pytest-asyncio==0.21.1
+# black==23.11.0
+# flake8==6.1.0
+# mypy==1.7.0
